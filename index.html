@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kelabang Alternating Gait</title>
+    <style>
+        body {
+            background-color: black;
+            overflow: hidden;
+            margin: 0;
+            position: relative;
+            z-index: 1000;
+        }
+        .main-point {
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            position: absolute;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .pijak {
+            width: 4px;
+            height: 4px;
+            background-color: gray;
+            position: absolute;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .link {
+            position: absolute;
+            background-color: red;
+            transform-origin: left center;
+            height: 1px;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        const pijakGridSize = 50;
+        const pijakPoints = [];
+        let touchX = window.innerWidth / 2;
+        let touchY = window.innerHeight / 2;
+        let bodyX = touchX, bodyY = touchY;
+        const maxLegStretch = 60;
+        const pullForce = 1; 
+        const maxSpeed = 5;
+        let legIndex = 1; // Menentukan kaki mana yang akan bergerak
+
+        const mainPoint = document.createElement("div");
+        mainPoint.classList.add("main-point");
+        document.body.appendChild(mainPoint);
+
+        for (let x = 0; x < window.innerWidth; x += pijakGridSize) {
+            for (let y = 0; y < window.innerHeight; y += pijakGridSize) {
+                const pijak = document.createElement("div");
+                pijak.classList.add("pijak");
+                document.body.appendChild(pijak);
+                pijakPoints.push({ element: pijak, x, y, occupied: false });
+            }
+        }
+
+        function findPijakInDirection(x, y, targetX, targetY) {
+            return pijakPoints.reduce((best, pijak) => {
+                if (!pijak.occupied) {
+                    const dotProduct = ((pijak.x - x) * (targetX - x) + (pijak.y - y) * (targetY - y));
+                    const dist = Math.hypot(pijak.x - x, pijak.y - y);
+                    if (dotProduct > 0 && dist < best.dist) {
+                        return { pijak, dist };
+                    }
+                }
+                return best;
+            }, { pijak: null, dist: Infinity }).pijak;
+        }
+
+        const feet = [
+            { x: bodyX - 30, y: bodyY - 30, target: null }, // Kanan depan
+            { x: bodyX + 30, y: bodyY - 30, target: null }, // Kiri depan
+            { x: bodyX - 30, y: bodyY + 30, target: null }, // Kanan belakang
+            { x: bodyX + 30, y: bodyY + 30, target: null },  // Kiri belakang
+            { x: bodyX - 30, y: bodyY + 30, target: null }, 
+            { x: bodyX - 30, y: bodyY + 30, target: null },
+            { x: bodyX - 30, y: bodyY + 30, target: null },
+            { x: bodyX - 30, y: bodyY + 30, target: null }
+        ];
+
+        const links = feet.map(() => {
+            const link = document.createElement("div");
+            link.classList.add("link");
+            document.body.appendChild(link);
+            return link;
+        });
+
+        function lerp(start, end, t) {
+            return start + (end - start) * t;
+        }
+
+        function updateMovement() {
+            let deltaX = touchX - bodyX;
+            let deltaY = touchY - bodyY;
+            let distance = Math.hypot(deltaX, deltaY);
+
+            if (distance > maxSpeed) {
+                let angle = Math.atan2(deltaY, deltaX);
+                bodyX += Math.cos(angle) * maxSpeed;
+                bodyY += Math.sin(angle) * maxSpeed;
+            } else {
+                bodyX = touchX;
+                bodyY = touchY;
+            }
+
+            mainPoint.style.left = `${bodyX}px`;
+            mainPoint.style.top = `${bodyY}px`;
+
+            pijakPoints.forEach(pijak => pijak.occupied = false);
+
+            if (feet[legIndex].target) {
+                feet[legIndex].target.occupied = false;
+            }
+
+            let foot = feet[legIndex];
+            let distanceFromBody = Math.hypot(foot.x - bodyX, foot.y - bodyY);
+
+            if (!foot.target || distanceFromBody > maxLegStretch) {
+                let newTarget = findPijakInDirection(bodyX, bodyY, touchX, touchY);
+                if (newTarget && !feet.some(f => f.target === newTarget)) {
+                    foot.target = newTarget;
+                    foot.target.occupied = true;
+                }
+            }
+
+            if (foot.target) {
+                foot.x = lerp(foot.x, foot.target.x, pullForce);
+                foot.y = lerp(foot.y, foot.target.y, pullForce);
+                
+                let distToTarget = Math.hypot(foot.x - foot.target.x, foot.y - foot.target.y);
+                if (distToTarget < 5) {
+                    let nextTarget = findPijakInDirection(bodyX, bodyY, touchX, touchY);
+                    if (nextTarget && !feet.some(f => f.target === nextTarget)) {
+                        foot.target = nextTarget;
+                        foot.target.occupied = true;
+                    }
+                    legIndex = (legIndex + 1) % feet.length; // Ganti ke kaki berikutnya
+                }
+            }
+
+            feet.forEach((foot, index) => {
+                const link = links[index];
+                const distX = foot.x - bodyX;
+                const distY = foot.y - bodyY;
+                const distance = Math.hypot(distX, distY);
+                const angle = Math.atan2(distY, distX);
+                link.style.left = `${bodyX}px`;
+                link.style.top = `${bodyY}px`;
+                link.style.width = `${distance}px`;
+                link.style.transform = `rotate(${angle}rad)`;
+            });
+
+            requestAnimationFrame(updateMovement);
+        }
+
+        document.addEventListener("touchmove", (event) => {
+            touchX = event.touches[0].clientX;
+            touchY = event.touches[0].clientY;
+        });
+
+        updateMovement();
+    </script>
+</body>
+</html>
